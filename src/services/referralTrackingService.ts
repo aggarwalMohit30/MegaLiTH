@@ -8,9 +8,12 @@ interface ReferralJoinData {
 export async function trackReferralJoin(data: ReferralJoinData) {
   const { newUserAddress, referralCode } = data;
 
-  // 1️⃣ Validate referral code
+  // Normalize the referral code
+  const normalizedCode = referralCode.toUpperCase().trim();
+
+  // 1️⃣ Find the referrer by code
   const referrerProgress = await prisma.userProgress.findUnique({
-    where: { referralCode },
+    where: { referralCode: normalizedCode },
     include: { user: true },
   });
 
@@ -18,42 +21,45 @@ export async function trackReferralJoin(data: ReferralJoinData) {
     throw new Error("Invalid referral code");
   }
 
-  // Prevent self-referral
-  if (referrerProgress.user.address === newUserAddress) {
+  // 2️⃣ Prevent self-referral
+  if (referrerProgress.user.address.toLowerCase() === newUserAddress.toLowerCase()) {
     throw new Error("You cannot use your own referral code");
   }
 
-  // Run inside transaction for safety
+  // Run inside transaction for data consistency
   const result = await prisma.$transaction(async (tx) => {
-    // 2️⃣ Get or create the new user
-    let newUser = await tx.user.findUnique({
+    // 3️⃣ Get the new user (must exist at this point)
+    const newUser = await tx.user.findUnique({
       where: { address: newUserAddress },
+      include: { progress: true },
     });
 
     if (!newUser) {
-      newUser = await tx.user.create({
-        data: {
-          address: newUserAddress,
-          progress: { create: {} },
-        },
-        include: { progress: true },
-      });
+      throw new Error("User not found. Please try again.");
     }
 
-    // 3️⃣ Ensure user not already referred
-    const alreadyReferred = await tx.referral.findFirst({
+    // 4️⃣ Check if user already has a referrer
+    const existingReferral = await tx.referral.findFirst({
       where: { userId: newUser.id },
     });
 
-    if (alreadyReferred) {
-      throw new Error("User already referred by someone else");
+    if (existingReferral) {
+      throw new Error("You have already been referred by someone else");
     }
 
-    // 4️⃣ Create referral record (referrer can have multiple)
+    // 5️⃣ Create the referral record
     const referral = await tx.referral.create({
       data: {
         userId: newUser.id,
         referrerId: referrerProgress.userId,
+      },
+    });
+
+    // 6️⃣ Optional: Update referrer's refState to show they have referrals
+    await tx.userProgress.update({
+      where: { userId: referrerProgress.userId },
+      data: {
+        refState: Math.max(referrerProgress.refState, 3), // Ensure at least state 3
       },
     });
 
@@ -72,9 +78,10 @@ export async function getUserReferralStats(address: string) {
   const user = await prisma.user.findUnique({
     where: { address },
     include: {
-      progress: {
+      progress: true,
+      referrals: {
         include: {
-          referredUsers: {
+          referrer: {
             include: { user: true },
           },
         },
@@ -86,12 +93,21 @@ export async function getUserReferralStats(address: string) {
     return null;
   }
 
-  const referrals = user.progress.referredUsers ?? [];
+  // Get users referred BY this user
+  const referredByThisUser = await prisma.referral.findMany({
+    where: { referrerId: user.progress.userId },
+    include: { user: true },
+  });
+
+  // Check if this user was referred by someone
+  const referredByUser = user.referrals[0];
 
   return {
-    totalReferrals: referrals.length,
+    totalReferrals: referredByThisUser.length,
     referralCode: user.progress.referralCode,
-    referredUsers: referrals.map((r) => ({
+    hasReferrer: !!referredByUser,
+    referredBy: referredByUser ? referredByUser.referrer.user.address : null,
+    referredUsers: referredByThisUser.map((r) => ({
       address: r.user.address,
       joinedAt: r.createdAt,
     })),

@@ -1,3 +1,4 @@
+// app/api/admin/dashboard/route.ts
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -6,6 +7,15 @@ async function isAdmin(address: string): Promise<boolean> {
     where: { address: address.toLowerCase() },
   });
   return !!admin;
+}
+
+// Helper to safely stringify BigInts
+function toSafeJSON<T>(obj: T): T {
+  return JSON.parse(
+    JSON.stringify(obj, (_, value) =>
+      typeof value === "bigint" ? value.toString() : value
+    )
+  );
 }
 
 export async function GET(req: NextRequest) {
@@ -64,6 +74,41 @@ export async function GET(req: NextRequest) {
     // Calculate overall statistics
     const totalReferralsCount = await prisma.referral.count();
 
+    // Get users who have been referred
+    const usersWithReferrers = await prisma.referral.groupBy({
+      by: ['userId'],
+      _count: true,
+    });
+
+    // Get top referrers
+    const topReferrers = await prisma.referral.groupBy({
+      by: ['referrerId'],
+      _count: {
+        userId: true,
+      },
+      orderBy: {
+        _count: {
+          userId: 'desc',
+        },
+      },
+      take: 10,
+    });
+
+    // Get referral codes for top referrers
+    const topReferrersWithCodes = await Promise.all(
+      topReferrers.map(async (ref) => {
+        const progress = await prisma.userProgress.findUnique({
+          where: { userId: ref.referrerId },
+          include: { user: true },
+        });
+        return {
+          address: progress?.user.address,
+          referralCode: progress?.referralCode,
+          count: ref._count.userId,
+        };
+      })
+    );
+
     // Format data for frontend
     const formattedData = referrals.map((ref) => ({
       address: ref.user.address,
@@ -81,23 +126,28 @@ export async function GET(req: NextRequest) {
     // Sort by total referrals (descending)
     formattedData.sort((a, b) => b.totalReferrals - a.totalReferrals);
 
-    return Response.json({
-      success: true,
-      data: formattedData,
-      stats: {
-        totalUsers: totalUsersCount,
-        totalReferrers: formattedData.length,
-        totalReferrals: totalReferralsCount,
-        averageReferralsPerUser:
-          formattedData.length > 0
-            ? (totalReferralsCount / formattedData.length).toFixed(2)
-            : 0,
-      },
-      meta: {
-        timestamp: new Date().toISOString(),
-        recordCount: formattedData.length,
-      },
-    });
+    return Response.json(
+      toSafeJSON({
+        success: true,
+        data: formattedData,
+        stats: {
+          totalUsers: totalUsersCount,
+          totalReferrers: formattedData.length,
+          totalReferrals: totalReferralsCount,
+          usersReferred: usersWithReferrers.length,
+          usersNotReferred: totalUsersCount - usersWithReferrers.length,
+          averageReferralsPerUser:
+            formattedData.length > 0
+              ? (totalReferralsCount / formattedData.length).toFixed(2)
+              : "0",
+          topReferrers: topReferrersWithCodes,
+        },
+        meta: {
+          timestamp: new Date().toISOString(),
+          recordCount: formattedData.length,
+        },
+      })
+    );
   } catch (error: unknown) {
     console.error("Admin Dashboard API Error:", error);
     const message =

@@ -51,28 +51,27 @@ model Admin {
 
 model Referral {
   id         String       @id @default(cuid())
-  userId     Int
+  userId     Int          @unique
   referrerId Int
   createdAt  DateTime     @default(now())
   user       User         @relation("ReferredUser", fields: [userId], references: [id], onDelete: Cascade)
   referrer   UserProgress @relation("ReferrerProgress", fields: [referrerId], references: [userId], onDelete: Cascade)
 
-  @@unique([userId, referrerId])
   @@index([referrerId])
   @@index([createdAt])
 }
 
 model UserBoost {
-  id                Int      @id @default(autoincrement())
-  userId            Int      @unique
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  bnbBalance        String   @default("0")
-  asterBalance      String   @default("0")
-  kiltBalance       String   @default("0")
-  hasBnbBoost       Boolean  @default(false)
-  hasAsterBoost     Boolean  @default(false)
-  hasKiltBoost      Boolean  @default(false)
-  lastUpdated       DateTime @default(now())
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id            Int      @id @default(autoincrement())
+  userId        Int      @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bnbBalance    String   @default("0")
+  asterBalance  String   @default("0")
+  kiltBalance   String   @default("0")
+  hasBnbBoost   Boolean  @default(false)
+  hasAsterBoost Boolean  @default(false)
+  hasKiltBoost  Boolean  @default(false)
+  lastUpdated   DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
