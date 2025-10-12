@@ -28,7 +28,19 @@ export default function Dashboard() {
   const [isRedeeming, setIsRedeeming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasCheckedReferral, setHasCheckedReferral] = useState(false);
-  const [userData, setUserData] = useState<any>(null);
+  const [userData, setUserData] = useState<{
+    id: string;
+    address: string;
+    progress?: {
+      referralCode?: string | null;
+      xState: number;
+      xVerified: boolean;
+      tgState: number;
+      refState: number;
+    } | null;
+    hasReferrer?: boolean;
+    referredBy?: string | null;
+  } | null>(null);
 
   // ✅ Capture ref code from URL on mount - FIXED: Use useEffect without searchParams dependency
   useEffect(() => {
