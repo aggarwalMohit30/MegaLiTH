@@ -259,7 +259,7 @@ export async function markTwitterPendingVerification(
   twitterUsername: string,
   twitterUserId: string,
   refreshToken: string | null | undefined,
-  isVerified: boolean = false // true for self-follow
+  isVerified: boolean = false
 ) {
   const user = await prisma.user.findUnique({ where: { address } });
   if (!user) throw new Error("User not found");
@@ -272,14 +272,13 @@ export async function markTwitterPendingVerification(
     twitterUserId: string;
     twitterRefreshToken?: string | null;
   } = {
-    xState: 3, // Mark as complete (optimistically)
-    xVerified: isVerified, // false = pending verification, true = self-follow
-    tgState: 1, // Unlock Telegram immediately (optimistic)
+    xState: 3,
+    xVerified: isVerified,
+    tgState: 1,
     twitterId: twitterUsername,
     twitterUserId,
   };
 
-  // Only set refresh token if it exists
   if (refreshToken) {
     updateData.twitterRefreshToken = refreshToken;
   }
@@ -294,16 +293,22 @@ export async function markTwitterPendingVerification(
       },
     });
   } catch (err: unknown) {
-    // Translate unique constraint on twitterId into a user-friendly error
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-      const target = Array.isArray((err as any).meta?.target) ? (err as any).meta?.target : undefined;
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002"
+    ) {
+      const meta = err.meta as { target?: string[] } | undefined;
+      const target = meta?.target;
+
       if (target && target.includes("twitterId")) {
         throw new Error("This X account has already registered.");
       }
     }
+
     throw err;
   }
 }
+
 
 // === Get Twitter username by ID ===
 interface TwitterV2UserLookupResponse {
