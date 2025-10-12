@@ -35,7 +35,7 @@ export async function createOrGetUser(address: string) {
     return existing;
   }
 
-  // Create new user with progress
+  // Create new user with progress (NO referral code yet)
   const newUser = await prisma.user.create({
     data: {
       address,
@@ -44,7 +44,7 @@ export async function createOrGetUser(address: string) {
           xState: 1,
           xVerified: false,
           tgState: 0,
-          refState: 0,
+          refState: 0, // Start at 0, will be updated after tasks
         }
       }
     },

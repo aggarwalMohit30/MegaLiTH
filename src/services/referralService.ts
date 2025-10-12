@@ -15,6 +15,15 @@ export async function generateReferral(address: string) {
     throw new Error("User progress not initialized");
   }
 
+  // ✅ CHECK: User must complete Twitter and Telegram first
+  // Adjust these conditions based on your task completion logic
+  const hasCompletedTwitter = user.progress.xState >= 2 && user.progress.xVerified;
+  const hasCompletedTelegram = user.progress.tgState >= 1;
+
+  if (!hasCompletedTwitter || !hasCompletedTelegram) {
+    throw new Error("Please complete Twitter and Telegram tasks first before generating a referral code");
+  }
+
   // ✅ If referral code already exists, return it
   if (user.progress.referralCode) {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000';
@@ -29,7 +38,7 @@ export async function generateReferral(address: string) {
   let referralCode = "";
   let isUnique = false;
   let attempts = 0;
-  const maxAttempts = 20; // Increased attempts for safety
+  const maxAttempts = 20;
 
   while (!isUnique && attempts < maxAttempts) {
     referralCode = generateCode();
@@ -37,7 +46,7 @@ export async function generateReferral(address: string) {
 
     // Ensure code is 6 characters and uppercase
     if (referralCode.length !== 6) {
-      continue; // Skip this iteration and try again
+      continue;
     }
 
     const existing = await prisma.userProgress.findFirst({
@@ -66,7 +75,7 @@ export async function generateReferral(address: string) {
     },
   });
 
-  const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+  const baseUrl =  process.env.NEXTAUTH_URL || 'http://localhost:3000';
   const referralLink = `${baseUrl}/?ref=${normalizedCode}`;
 
   return {
