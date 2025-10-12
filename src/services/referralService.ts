@@ -7,28 +7,41 @@ export async function generateReferral(address: string) {
     include: { progress: true },
   });
 
-  if (!user || !user.progress) {
+  if (!user) {
     throw new Error("User not found");
   }
 
-  // ✅ If referral code already exists, reuse it
+  if (!user.progress) {
+    throw new Error("User progress not initialized");
+  }
+
+  // ✅ If referral code already exists, return it
   if (user.progress.referralCode) {
-    const referralLink = `${process.env.NEXTAUTH_URL}/?ref=${user.progress.referralCode}`;
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000';
+    const referralLink = `${baseUrl}/?ref=${user.progress.referralCode}`;
     return {
       referralCode: user.progress.referralCode,
       referralLink,
     };
   }
 
-  // ✅ Generate a unique referral code
+  // ✅ Generate a unique referral code with retry logic
   let referralCode = "";
   let isUnique = false;
+  let attempts = 0;
+  const maxAttempts = 20; // Increased attempts for safety
 
-  while (!isUnique) {
+  while (!isUnique && attempts < maxAttempts) {
     referralCode = generateCode();
+    attempts++;
+
+    // Ensure code is 6 characters and uppercase
+    if (referralCode.length !== 6) {
+      continue; // Skip this iteration and try again
+    }
 
     const existing = await prisma.userProgress.findFirst({
-      where: { referralCode },
+      where: { referralCode: referralCode.toUpperCase() },
       select: { id: true },
     });
 
@@ -37,19 +50,27 @@ export async function generateReferral(address: string) {
     }
   }
 
-  // ✅ Save the referral code to DB (refState: 3 = COMPLETED)
+  if (!isUnique) {
+    throw new Error("Failed to generate unique referral code after multiple attempts. Please try again.");
+  }
+
+  // ✅ Normalize code to uppercase before saving
+  const normalizedCode = referralCode.toUpperCase();
+
+  // ✅ Save the referral code to DB
   await prisma.userProgress.update({
     where: { userId: user.id },
     data: {
-      referralCode,
-      refState: 3,
+      referralCode: normalizedCode,
+      refState: 3, // Mark as having referral code generated
     },
   });
 
-  const referralLink = `${process.env.NEXTAUTH_URL}/?ref=${referralCode}`;
+  const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+  const referralLink = `${baseUrl}/?ref=${normalizedCode}`;
 
   return {
-    referralCode,
+    referralCode: normalizedCode,
     referralLink,
   };
 }

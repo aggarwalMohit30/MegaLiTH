@@ -23,62 +23,25 @@ export default function Dashboard() {
   const [referralLink, setReferralLink] = useState<string | null>(null);
   const [showReferralModal, setShowReferralModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
-  const [hasProcessedReferral, setHasProcessedReferral] = useState(false);
   const [refCodeFromURL, setRefCodeFromURL] = useState<string | null>(null);
   const [userReferralCode, setUserReferralCode] = useState<string | null>(null);
   const [isRedeeming, setIsRedeeming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasCheckedReferral, setHasCheckedReferral] = useState(false);
 
-  // ✅ Capture and persist ref code from URL (before wallet connection)
+  // ✅ Capture ref code from URL on mount only
   useEffect(() => {
     const ref = searchParams.get("ref");
     if (ref) {
       setRefCodeFromURL(ref);
-      // Store in sessionStorage to persist across page reloads
-      sessionStorage.setItem("pendingReferralCode", ref);
-    } else {
-      // Check if there's a pending referral code
-      const pending = sessionStorage.getItem("pendingReferralCode");
-      if (pending) {
-        setRefCodeFromURL(pending);
-      }
+      // Clear URL parameter to prevent issues
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete("ref");
+      window.history.replaceState({}, "", newUrl.toString());
     }
   }, [searchParams]);
 
-  // ✅ Show referral modal when conditions are met
-  useEffect(() => {
-    // Only show modal if:
-    // 1. Wallet is connected
-    // 2. There's a ref code from URL
-    // 3. Hasn't been processed yet
-    // 4. User data is ready
-    // 5. User's own referral code is loaded (to prevent self-referral check)
-    if (
-      isConnected &&
-      refCodeFromURL &&
-      !hasProcessedReferral &&
-      userReady &&
-      userReferralCode !== undefined
-    ) {
-      // ✅ Prevent self-referral
-      if (refCodeFromURL === userReferralCode) {
-        setError("You cannot use your own referral code");
-        setHasProcessedReferral(true);
-        sessionStorage.removeItem("pendingReferralCode");
-        return;
-      }
-
-      setShowReferralModal(true);
-    }
-  }, [
-    isConnected,
-    refCodeFromURL,
-    hasProcessedReferral,
-    userReady,
-    userReferralCode,
-  ]);
-
-  // Fetch or create user
+  // ✅ Initialize or fetch user
   useEffect(() => {
     if (!isConnected) {
       router.replace("/");
@@ -87,51 +50,24 @@ export default function Dashboard() {
 
     if (!didInitRef.current && isFetched) {
       didInitRef.current = true;
-      fetch(`/api/user?address=${address}`)
-        .then(async (r) => (r.ok ? r.json() : null))
-        .then(async (existing) => {
+      
+      const initializeUser = async () => {
+        try {
+          const response = await fetch(`/api/user?address=${address}`);
+          const existing = response.ok ? await response.json() : null;
+
           if (existing?.id) {
-            setUserReady(true);
+            // Existing user
+            setUserReferralCode(existing.progress?.referralCode || null);
+            
             if (existing.progress?.referralCode) {
               const refLink = `${window.location.origin}/?ref=${existing.progress.referralCode}`;
               setReferralLink(refLink);
-              setUserReferralCode(existing.progress.referralCode);
             }
-            // Silently compute and store boost on login
-            try {
-              await fetch("/api/boost/calculate", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ address }),
-              });
-            } catch (error) {
-              console.error("Failed to calculate boost after login", {
-                address,
-                error,
-              });
-            }
-            return;
-          }
 
-          // Create new user
-          const r = await fetch("/api/user", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ address }),
-          });
-
-          if (r.ok) {
-            const newUser = await r.json();
             setUserReady(true);
 
-            // Set the new user's referral code
-            if (newUser.progress?.referralCode) {
-              const refLink = `${window.location.origin}/?ref=${newUser.progress.referralCode}`;
-              setReferralLink(refLink);
-              setUserReferralCode(newUser.progress.referralCode);
-            }
-
-            // After creating user, compute and store boost
+            // Calculate boost silently
             try {
               await fetch("/api/boost/calculate", {
                 method: "POST",
@@ -139,18 +75,89 @@ export default function Dashboard() {
                 body: JSON.stringify({ address }),
               });
             } catch (error) {
-              console.error("Failed to calculate boost after user creation", {
-                address,
-                error,
+              console.error("Failed to calculate boost", error);
+            }
+          } else {
+            // Create new user
+            const createResponse = await fetch("/api/user", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ address }),
+            });
+
+            if (createResponse.ok) {
+              const newUser = await createResponse.json();
+              
+              // Generate referral code for new user
+              const referralResponse = await fetch("/api/referral", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ address }),
               });
+
+              if (referralResponse.ok) {
+                const referralData = await referralResponse.json();
+                setUserReferralCode(referralData.referralCode);
+                setReferralLink(referralData.referralLink);
+              }
+
+              setUserReady(true);
+
+              // Calculate boost
+              try {
+                await fetch("/api/boost/calculate", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ address }),
+                });
+              } catch (error) {
+                console.error("Failed to calculate boost", error);
+              }
             }
           }
+        } catch (error) {
+          console.error("Failed to initialize user", error);
+          setError("Failed to initialize user. Please refresh the page.");
+        }
+      };
+
+      initializeUser();
+    }
+  }, [isConnected, router, isFetched, address]);
+
+  // ✅ Show referral modal after user is ready
+  useEffect(() => {
+    if (
+      userReady &&
+      refCodeFromURL &&
+      !hasCheckedReferral &&
+      userReferralCode !== null
+    ) {
+      setHasCheckedReferral(true);
+
+      // Prevent self-referral
+      if (refCodeFromURL === userReferralCode) {
+        setError("You cannot use your own referral code");
+        return;
+      }
+
+      // Check if user is already referred
+      fetch(`/api/user?address=${address}`)
+        .then((r) => r.json())
+        .then((userData) => {
+          // Check if user already has a referrer
+          if (userData.hasReferrer) {
+            setError("You have already been referred by someone else");
+            return;
+          }
+          
+          setShowReferralModal(true);
         })
-        .catch((error) => {
-          console.error("Failed to fetch or create user", { address, error });
+        .catch((err) => {
+          console.error("Failed to check referral status", err);
         });
     }
-  }, [isConnected, router, isFetched, data, address]);
+  }, [userReady, refCodeFromURL, hasCheckedReferral, userReferralCode, address]);
 
   const handleRedeemReferral = async (code: string) => {
     if (!address) {
@@ -165,7 +172,10 @@ export default function Dashboard() {
       const response = await fetch("/api/referral/join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ newUserAddress: address, referralCode: code }),
+        body: JSON.stringify({ 
+          newUserAddress: address, 
+          referralCode: code.toUpperCase() 
+        }),
       });
 
       const result = await response.json();
@@ -174,19 +184,18 @@ export default function Dashboard() {
         throw new Error(result.error || "Failed to redeem referral code");
       }
 
-      // ✅ Success - clean up and close modal
-      setHasProcessedReferral(true);
       setShowReferralModal(false);
-      sessionStorage.removeItem("pendingReferralCode");
-
-      // Optional: Show success message
-      alert("Referral code redeemed successfully! 🎉");
+      
+      // Show success message
+      setTimeout(() => {
+        alert("Referral code redeemed successfully! 🎉");
+      }, 100);
     } catch (err) {
       const errorMessage =
         err instanceof Error ? err.message : "Failed to redeem referral code";
       setError(errorMessage);
       console.error("Referral error:", err);
-      throw err; // Re-throw to let modal handle it
+      throw err;
     } finally {
       setIsRedeeming(false);
     }
@@ -194,8 +203,6 @@ export default function Dashboard() {
 
   const handleCloseReferralModal = () => {
     setShowReferralModal(false);
-    setHasProcessedReferral(true);
-    sessionStorage.removeItem("pendingReferralCode");
   };
 
   return (
