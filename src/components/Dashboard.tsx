@@ -28,18 +28,24 @@ export default function Dashboard() {
   const [isRedeeming, setIsRedeeming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasCheckedReferral, setHasCheckedReferral] = useState(false);
+  const [userData, setUserData] = useState<any>(null);
 
-  // ✅ Capture ref code from URL on mount only
+  // ✅ Capture ref code from URL on mount - FIXED: Use useEffect without searchParams dependency
   useEffect(() => {
-    const ref = searchParams.get("ref");
+    // Run only once on mount
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get("ref");
+    
     if (ref) {
+      console.log("Referral code found in URL:", ref);
       setRefCodeFromURL(ref);
-      // Clear URL parameter to prevent issues
+      
+      // Clear URL parameter immediately to prevent issues
       const newUrl = new URL(window.location.href);
       newUrl.searchParams.delete("ref");
       window.history.replaceState({}, "", newUrl.toString());
     }
-  }, [searchParams]);
+  }, []); // Empty dependency array - runs once
 
   // ✅ Initialize or fetch user
   useEffect(() => {
@@ -58,6 +64,8 @@ export default function Dashboard() {
 
           if (existing?.id) {
             // Existing user
+            console.log("Existing user loaded:", existing);
+            setUserData(existing);
             setUserReferralCode(existing.progress?.referralCode || null);
             
             if (existing.progress?.referralCode) {
@@ -78,7 +86,8 @@ export default function Dashboard() {
               console.error("Failed to calculate boost", error);
             }
           } else {
-            // Create new user
+            // Create new user WITHOUT referral code
+            console.log("Creating new user without referral code");
             const createResponse = await fetch("/api/user", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -87,20 +96,10 @@ export default function Dashboard() {
 
             if (createResponse.ok) {
               const newUser = await createResponse.json();
-              
-              // Generate referral code for new user
-              const referralResponse = await fetch("/api/referral", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ address }),
-              });
-
-              if (referralResponse.ok) {
-                const referralData = await referralResponse.json();
-                setUserReferralCode(referralData.referralCode);
-                setReferralLink(referralData.referralLink);
-              }
-
+              console.log("New user created:", newUser);
+              setUserData(newUser);
+              // Don't generate referral code yet
+              setUserReferralCode(null);
               setUserReady(true);
 
               // Calculate boost
@@ -125,39 +124,47 @@ export default function Dashboard() {
     }
   }, [isConnected, router, isFetched, address]);
 
-  // ✅ Show referral modal after user is ready
+  // ✅ Show referral modal after user is ready - IMPROVED LOGIC
   useEffect(() => {
-    if (
-      userReady &&
-      refCodeFromURL &&
-      !hasCheckedReferral &&
-      userReferralCode !== null
-    ) {
-      setHasCheckedReferral(true);
-
-      // Prevent self-referral
-      if (refCodeFromURL === userReferralCode) {
-        setError("You cannot use your own referral code");
-        return;
-      }
-
-      // Check if user is already referred
-      fetch(`/api/user?address=${address}`)
-        .then((r) => r.json())
-        .then((userData) => {
-          // Check if user already has a referrer
-          if (userData.hasReferrer) {
-            setError("You have already been referred by someone else");
-            return;
-          }
-          
-          setShowReferralModal(true);
-        })
-        .catch((err) => {
-          console.error("Failed to check referral status", err);
-        });
+    if (!userReady || !refCodeFromURL || hasCheckedReferral) {
+      return;
     }
-  }, [userReady, refCodeFromURL, hasCheckedReferral, userReferralCode, address]);
+
+    console.log("Checking referral eligibility...");
+    setHasCheckedReferral(true);
+
+    // Wait a bit for userData to be fully loaded
+    const timer = setTimeout(async () => {
+      try {
+        // Fetch fresh user data to check referral status
+        const response = await fetch(`/api/user?address=${address}`);
+        const freshUserData = await response.json();
+        
+        console.log("Fresh user data:", freshUserData);
+
+        // Prevent self-referral
+        if (freshUserData.progress?.referralCode === refCodeFromURL) {
+          console.log("Self-referral detected");
+          setError("You cannot use your own referral code");
+          return;
+        }
+
+        // Check if user already has a referrer
+        if (freshUserData.hasReferrer) {
+          console.log("User already has a referrer");
+          setError("You have already been referred by someone else");
+          return;
+        }
+
+        console.log("Showing referral modal");
+        setShowReferralModal(true);
+      } catch (err) {
+        console.error("Failed to check referral status", err);
+      }
+    }, 500); // Small delay to ensure userData is loaded
+
+    return () => clearTimeout(timer);
+  }, [userReady, refCodeFromURL, hasCheckedReferral, address]);
 
   const handleRedeemReferral = async (code: string) => {
     if (!address) {
@@ -189,6 +196,8 @@ export default function Dashboard() {
       // Show success message
       setTimeout(() => {
         alert("Referral code redeemed successfully! 🎉");
+        // Refresh user data
+        window.location.reload();
       }, 100);
     } catch (err) {
       const errorMessage =
@@ -203,6 +212,7 @@ export default function Dashboard() {
 
   const handleCloseReferralModal = () => {
     setShowReferralModal(false);
+    setRefCodeFromURL(null); // Clear the code
   };
 
   return (
@@ -219,6 +229,12 @@ export default function Dashboard() {
         {error && (
           <div className="max-w-6xl mx-auto mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
             <p className="text-red-600 dark:text-red-400">{error}</p>
+            <button
+              onClick={() => setError(null)}
+              className="mt-2 text-sm text-red-600 dark:text-red-400 underline"
+            >
+              Dismiss
+            </button>
           </div>
         )}
 
