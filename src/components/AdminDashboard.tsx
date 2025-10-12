@@ -297,7 +297,7 @@ export default function AdminDashboard() {
       const { data, stats }: { data: CompleteExportData; stats: CompleteStats } = result;
 
       // Helper function to safely format dates
-      const formatDate = (dateValue: any): string => {
+      const formatDate = (dateValue: string | number | Date | null | undefined): string => {
         if (!dateValue) return 'No Date';
         
         // If it's already a Date object
