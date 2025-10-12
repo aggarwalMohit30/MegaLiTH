@@ -1,16 +1,18 @@
-import React, { useState, ChangeEvent, KeyboardEvent } from "react";
+import React, { useState, useEffect, ChangeEvent, KeyboardEvent } from "react";
 import { X } from "lucide-react";
 
 interface ReferralInviteModalProps {
   isOpen: boolean;
   onClose: () => void;
   onRedeem: (code: string) => Promise<void>;
+  initialCode?: string;
 }
 
 export default function ReferralInviteModal({
   isOpen,
   onClose,
   onRedeem,
+  initialCode = "",
 }: ReferralInviteModalProps) {
   const [inviteCode, setInviteCode] = useState<string[]>([
     "",
@@ -22,6 +24,24 @@ export default function ReferralInviteModal({
   ]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
+
+  // ✅ Auto-fill the code when modal opens with initialCode
+  useEffect(() => {
+    if (isOpen && initialCode && initialCode.length === 6) {
+      const codeArray = initialCode.toUpperCase().split("");
+      setInviteCode(codeArray);
+      setError("");
+    }
+  }, [isOpen, initialCode]);
+
+  // ✅ Reset form when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setInviteCode(["", "", "", "", "", ""]);
+      setError("");
+      setIsLoading(false);
+    }
+  }, [isOpen]);
 
   const handleInputChange = (index: number, value: string) => {
     if (value.length > 1) return;
@@ -50,14 +70,17 @@ export default function ReferralInviteModal({
 
   const handleRedeem = async () => {
     const code = inviteCode.join("");
-    if (code.length !== 6) return;
+    if (code.length !== 6) {
+      setError("Please enter a complete 6-character code");
+      return;
+    }
 
     setIsLoading(true);
     setError("");
 
     try {
       await onRedeem(code);
-      onClose();
+      // Don't close here - let parent handle it after success
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to redeem code");
     } finally {
@@ -75,8 +98,9 @@ export default function ReferralInviteModal({
     <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center p-4 z-50">
       <div className="bg-zinc-900 rounded-2xl max-w-2xl w-full p-8 relative shadow-2xl border border-zinc-800">
         <button
-          onClick={onClose}
+          onClick={handleSkip}
           className="absolute top-4 right-4 text-zinc-400 hover:text-white transition-colors"
+          aria-label="Close modal"
         >
           <X size={24} />
         </button>
@@ -103,7 +127,9 @@ export default function ReferralInviteModal({
             Enter your invite code to earn your airdrop
           </h2>
           <p className="text-zinc-400 text-sm">
-            Enter the 6-character code to claim your rewards
+            {initialCode 
+              ? "Confirm your referral code to claim your rewards" 
+              : "Enter the 6-character code to claim your rewards"}
           </p>
         </div>
 
@@ -123,12 +149,15 @@ export default function ReferralInviteModal({
               }
               className="w-16 h-16 text-center text-2xl font-bold bg-transparent border-2 border-orange-500 text-white rounded-lg focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-500 focus:ring-opacity-50 transition-all"
               placeholder=""
+              disabled={isLoading}
             />
           ))}
         </div>
 
         {error && (
-          <div className="mb-6 text-center text-red-400 text-sm">{error}</div>
+          <div className="mb-6 text-center text-red-400 text-sm bg-red-500/10 border border-red-500/30 rounded-lg py-3 px-4">
+            {error}
+          </div>
         )}
 
         <button
@@ -136,14 +165,37 @@ export default function ReferralInviteModal({
           disabled={inviteCode.join("").length !== 6 || isLoading}
           className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold py-4 px-6 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed mb-6 text-lg shadow-lg shadow-orange-500/30"
         >
-          {isLoading ? "Redeeming..." : "Redeem invite code"}
+          {isLoading ? (
+            <span className="flex items-center justify-center gap-2">
+              <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                  fill="none"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+              Redeeming...
+            </span>
+          ) : (
+            "Redeem invite code"
+          )}
         </button>
 
-        <p className="text-zinc-400">
+        <p className="text-zinc-400 text-center">
           Don&apos;t have an invite code?{" "}
           <button
             onClick={handleSkip}
             className="text-orange-500 hover:text-orange-400 font-medium transition-colors"
+            disabled={isLoading}
           >
             Skip
           </button>
