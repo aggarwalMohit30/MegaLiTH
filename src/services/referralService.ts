@@ -17,8 +17,8 @@ export async function generateReferral(address: string) {
 
   // ✅ CHECK: User must complete Twitter and Telegram first
   // Adjust these conditions based on your task completion logic
-  const hasCompletedTwitter = user.progress.xState >= 2 && user.progress.xVerified;
-  const hasCompletedTelegram = user.progress.tgState >= 1;
+  const hasCompletedTwitter = user.progress.xState >= 2 && !user.progress.xVerified;
+  const hasCompletedTelegram = user.progress.tgState >= 2;
 
   if (!hasCompletedTwitter || !hasCompletedTelegram) {
     throw new Error("Please complete Twitter and Telegram tasks first before generating a referral code");
