@@ -6,6 +6,7 @@ import ThemeToggle from "./components/ThemeToggle";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { Toaster } from 'react-hot-toast';
 import Image from "next/image";
+import RefCapture from "./RefCapture";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -60,6 +61,7 @@ export default function RootLayout({
             </div>
           </header>
 
+          <RefCapture />
           <main>{children}</main>
           <Toaster position="top-right" reverseOrder={false} />
         </Providers>
