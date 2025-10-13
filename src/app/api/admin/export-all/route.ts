@@ -5,7 +5,7 @@ const prisma = new PrismaClient();
 
 async function isAdmin(address: string): Promise<boolean> {
   const admin = await prisma.admin.findUnique({
-    where: { address: address.toLowerCase() },
+    where: { address: address },
   });
   return !!admin;
 }
