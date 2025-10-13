@@ -573,7 +573,7 @@ export default function AdminDashboard() {
                         {ref.address.slice(0, 6)}...{ref.address.slice(-4)}
                       </td>
                       <td className="px-6 py-4 text-sm text-purple-300 font-mono">{ref.referralCode || '-'}</td>
-                      <td className="px-6 py-4 text-sm text-center">
+                      <td className="px-6 py-4 text-sm">
                         <span className="inline-flex items-center px-3 py-1 rounded-full bg-green-500/20 text-green-300 font-semibold">
                           {ref.totalReferrals}
                         </span>
