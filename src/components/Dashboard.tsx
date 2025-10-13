@@ -143,35 +143,35 @@ export default function Dashboard() {
   }, [isConnected, router, isFetched, address]);
 
   // ✅ Show referral modal after user is ready - with session support
-  useEffect(() => {
-    if (!userReady || !refCodeFromURL || !userData) {
-      return;
-    }
+useEffect(() => {
+  if (!userReady || !userData) return;
 
-    console.log("Checking referral eligibility with userData:", userData);
+  const pendingRef = refCodeFromURL || sessionStorage.getItem("pendingReferralCode");
+  if (!pendingRef) return;
 
-    // Prevent self-referral
-    if (userData.progress?.referralCode === refCodeFromURL) {
-      console.log("Self-referral detected");
-      setError("You cannot use your own referral code");
-      setRefCodeFromURL(null);
-      sessionStorage.removeItem("pendingReferralCode");
-      return;
-    }
+  console.log("Referral check starting. userReady:", userReady, "userData:", userData, "refCode:", pendingRef);
 
-    // Check if user already has a referrer
-    if (userData.hasReferrer) {
-      console.log("User already has a referrer");
-      setError("You have already been referred by someone else");
-      setRefCodeFromURL(null);
-      sessionStorage.removeItem("pendingReferralCode");
-      return;
-    }
+  // Prevent self-referral
+  if (userData.progress?.referralCode === pendingRef) {
+    console.log("Self-referral detected");
+    setError("You cannot use your own referral code");
+    sessionStorage.removeItem("pendingReferralCode");
+    return;
+  }
 
-    // All checks passed - show modal
-    console.log("Showing referral modal for code:", refCodeFromURL);
-    setShowReferralModal(true);
-  }, [userReady, refCodeFromURL, userData]);
+  // Already referred
+  if (userData.hasReferrer) {
+    console.log("User already has a referrer");
+    setError("You have already been referred by someone else");
+    sessionStorage.removeItem("pendingReferralCode");
+    return;
+  }
+
+  console.log("✅ Showing referral modal for:", pendingRef);
+  setRefCodeFromURL(pendingRef);
+  setShowReferralModal(true);
+}, [userReady, userData, refCodeFromURL]);
+
 
   const handleRedeemReferral = async (code: string) => {
     if (!address) {
