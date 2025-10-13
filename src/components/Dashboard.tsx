@@ -27,7 +27,6 @@ export default function Dashboard() {
   const [userReferralCode, setUserReferralCode] = useState<string | null>(null);
   const [isRedeeming, setIsRedeeming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasCheckedReferral, setHasCheckedReferral] = useState(false);
   const [userData, setUserData] = useState<{
     id: string;
     address: string;
@@ -42,22 +41,30 @@ export default function Dashboard() {
     referredBy?: string | null;
   } | null>(null);
 
-  // ✅ Capture ref code from URL on mount - FIXED: Use useEffect without searchParams dependency
+  // ✅ Capture ref code from URL on mount and store in sessionStorage
   useEffect(() => {
-    // Run only once on mount
     const params = new URLSearchParams(window.location.search);
     const ref = params.get("ref");
     
     if (ref) {
       console.log("Referral code found in URL:", ref);
+      // Store in sessionStorage for persistence
+      sessionStorage.setItem("pendingReferralCode", ref);
       setRefCodeFromURL(ref);
       
       // Clear URL parameter immediately to prevent issues
       const newUrl = new URL(window.location.href);
       newUrl.searchParams.delete("ref");
       window.history.replaceState({}, "", newUrl.toString());
+    } else {
+      // Check if there's a pending referral code in session
+      const storedRef = sessionStorage.getItem("pendingReferralCode");
+      if (storedRef) {
+        console.log("Referral code found in session:", storedRef);
+        setRefCodeFromURL(storedRef);
+      }
     }
-  }, []); // Empty dependency array - runs once
+  }, []);
 
   // ✅ Initialize or fetch user
   useEffect(() => {
@@ -110,7 +117,6 @@ export default function Dashboard() {
               const newUser = await createResponse.json();
               console.log("New user created:", newUser);
               setUserData(newUser);
-              // Don't generate referral code yet
               setUserReferralCode(null);
               setUserReady(true);
 
@@ -136,47 +142,36 @@ export default function Dashboard() {
     }
   }, [isConnected, router, isFetched, address]);
 
-  // ✅ Show referral modal after user is ready - IMPROVED LOGIC
+  // ✅ Show referral modal after user is ready - with session support
   useEffect(() => {
-    if (!userReady || !refCodeFromURL || hasCheckedReferral) {
+    if (!userReady || !refCodeFromURL || !userData) {
       return;
     }
 
-    console.log("Checking referral eligibility...");
-    setHasCheckedReferral(true);
+    console.log("Checking referral eligibility with userData:", userData);
 
-    // Wait a bit for userData to be fully loaded
-    const timer = setTimeout(async () => {
-      try {
-        // Fetch fresh user data to check referral status
-        const response = await fetch(`/api/user?address=${address}`);
-        const freshUserData = await response.json();
-        
-        console.log("Fresh user data:", freshUserData);
+    // Prevent self-referral
+    if (userData.progress?.referralCode === refCodeFromURL) {
+      console.log("Self-referral detected");
+      setError("You cannot use your own referral code");
+      setRefCodeFromURL(null);
+      sessionStorage.removeItem("pendingReferralCode");
+      return;
+    }
 
-        // Prevent self-referral
-        if (freshUserData.progress?.referralCode === refCodeFromURL) {
-          console.log("Self-referral detected");
-          setError("You cannot use your own referral code");
-          return;
-        }
+    // Check if user already has a referrer
+    if (userData.hasReferrer) {
+      console.log("User already has a referrer");
+      setError("You have already been referred by someone else");
+      setRefCodeFromURL(null);
+      sessionStorage.removeItem("pendingReferralCode");
+      return;
+    }
 
-        // Check if user already has a referrer
-        if (freshUserData.hasReferrer) {
-          console.log("User already has a referrer");
-          setError("You have already been referred by someone else");
-          return;
-        }
-
-        console.log("Showing referral modal");
-        setShowReferralModal(true);
-      } catch (err) {
-        console.error("Failed to check referral status", err);
-      }
-    }, 500); // Small delay to ensure userData is loaded
-
-    return () => clearTimeout(timer);
-  }, [userReady, refCodeFromURL, hasCheckedReferral, address]);
+    // All checks passed - show modal
+    console.log("Showing referral modal for code:", refCodeFromURL);
+    setShowReferralModal(true);
+  }, [userReady, refCodeFromURL, userData]);
 
   const handleRedeemReferral = async (code: string) => {
     if (!address) {
@@ -203,7 +198,10 @@ export default function Dashboard() {
         throw new Error(result.error || "Failed to redeem referral code");
       }
 
+      // Clear session storage on success
+      sessionStorage.removeItem("pendingReferralCode");
       setShowReferralModal(false);
+      setRefCodeFromURL(null);
       
       // Show success message
       setTimeout(() => {
@@ -224,7 +222,9 @@ export default function Dashboard() {
 
   const handleCloseReferralModal = () => {
     setShowReferralModal(false);
-    setRefCodeFromURL(null); // Clear the code
+    setRefCodeFromURL(null);
+    // Clear session storage when user dismisses modal
+    sessionStorage.removeItem("pendingReferralCode");
   };
 
   return (
