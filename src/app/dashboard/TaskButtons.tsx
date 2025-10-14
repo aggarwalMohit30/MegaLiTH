@@ -50,7 +50,7 @@ function Btn({
 }
 
 // ===== MAIN TASK BUTTONS COMPONENT =====
-export default function TaskButtons({ disabled, setReferralLink }: { disabled?: boolean; setReferralLink: (link: string | null) => void }) {
+export default function TaskButtons({ disabled, setReferralLink, setReferralCode }: { disabled?: boolean; setReferralLink: (link: string | null) => void; setReferralCode: (code: string | null) => void }) {
   const { address } = useAccount();
   const queryClient = useQueryClient();
   const { data, upsert, refetch } = useProgress();
@@ -298,6 +298,11 @@ export default function TaskButtons({ disabled, setReferralLink }: { disabled?: 
         setReferralLink(data.referralLink);
       } else {
         setReferralLink(null);
+      }
+      if (data.referralCode) {
+        setReferralCode(data.referralCode);
+      } else {
+        setReferralCode(null);
       }
       
       setPending(null);

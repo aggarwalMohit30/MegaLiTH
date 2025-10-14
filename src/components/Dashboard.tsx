@@ -321,6 +321,7 @@ useEffect(() => {
             <TaskButtons
               disabled={!userReady}
               setReferralLink={setReferralLink}
+              setReferralCode={setUserReferralCode}
             />
 
             {referralLink && userReferralCode && (
