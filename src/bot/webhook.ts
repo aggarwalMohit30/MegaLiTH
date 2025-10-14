@@ -1,3 +1,4 @@
+import { START_MESSAGE } from "@/constants/startMessage";
 import "dotenv/config";
 import { Telegraf } from "telegraf";
 
@@ -85,11 +86,9 @@ bot.start(async (ctx) => {
     await ctx.reply("❌ Failed to create invite link. Please try again later.");
     return;
   }
+ const message = START_MESSAGE.replace("[link]", inviteLink);
 
-  await ctx.reply(
-    `✅ Click to join group:\n\n${inviteLink}\n\n⏱️ Expires in 1 hour, one-time use.`,
-    { parse_mode: "Markdown" }
-  );
+    await ctx.reply(message, { parse_mode: "Markdown" });
 });
 
 // chat_member updates
